@@ -1,0 +1,421 @@
+import React, { useState, useRef, useEffect } from 'react';
+import { LearningSession, Message, RoadmapItem } from '@/types';
+import { ChatMessage } from '@/components/ChatMessage';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { gemini } from '@/lib/gemini';
+import { Send, Loader2, BookOpen, RotateCcw, HelpCircle, FileText, ZoomIn, ZoomOut, Maximize2, Paperclip, X, File, Image as ImageIcon } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Timeline } from '@/components/Timeline';
+import { parseRoadmap } from '@/lib/utils';
+
+interface ChatInterfaceProps {
+  session: LearningSession;
+  onUpdateSession: (session: LearningSession) => void;
+}
+
+export function ChatInterface({ session, onUpdateSession }: ChatInterfaceProps) {
+  const [input, setInput] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [attachments, setAttachments] = useState<{ file: File; url: string }[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [zoom, setZoom] = useState(() => {
+    const saved = localStorage.getItem('chat-zoom');
+    return saved ? parseInt(saved, 10) : 100;
+  });
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Retroactive roadmap parsing for existing sessions
+  useEffect(() => {
+    if (!session.roadmapItems || session.roadmapItems.length === 0) {
+      for (const msg of session.messages) {
+        if (msg.role === 'model') {
+          const items = parseRoadmap(msg.content);
+          if (items) {
+            items[0].messageId = msg.id;
+            onUpdateSession({ ...session, roadmapItems: items });
+            break;
+          }
+        }
+      }
+    }
+  }, [session.id]);
+
+  useEffect(() => {
+    localStorage.setItem('chat-zoom', zoom.toString());
+  }, [zoom]);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [session.messages, isLoading]);
+
+  const handleTimelineItemClick = (item: RoadmapItem) => {
+    if (item.messageId) {
+      const element = document.getElementById(`message-${item.messageId}`);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    const newAttachments = files.map(file => ({
+      file,
+      url: URL.createObjectURL(file)
+    }));
+    setAttachments(prev => [...prev, ...newAttachments]);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const removeAttachment = (index: number) => {
+    setAttachments(prev => {
+      const newArr = [...prev];
+      URL.revokeObjectURL(newArr[index].url);
+      newArr.splice(index, 1);
+      return newArr;
+    });
+  };
+
+  const handleSend = async (text: string = input) => {
+    if ((!text.trim() && attachments.length === 0) || isLoading) return;
+
+    const userMsg: Message = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: text,
+      timestamp: Date.now(),
+      attachments: attachments.map(a => ({
+        name: a.file.name,
+        type: a.file.type,
+        url: a.url
+      }))
+    };
+
+    const updatedMessages = [...session.messages, userMsg];
+    onUpdateSession({ ...session, messages: updatedMessages });
+    setInput('');
+    setAttachments([]);
+    setIsLoading(true);
+
+    try {
+      // In a real app, we would upload files to a server and send URLs to Gemini
+      // For this demo, we'll append the file names to the prompt
+      const attachmentContext = userMsg.attachments?.length 
+        ? `\n\n[User attached files: ${userMsg.attachments.map(a => a.name).join(', ')}]`
+        : '';
+      
+      const aiResponse = await gemini.sendMessage(session, text + attachmentContext, session.messages);
+      const aiMsg: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'model',
+        content: aiResponse,
+        timestamp: Date.now(),
+      };
+      
+      let updatedSession = { ...session, messages: [...updatedMessages, aiMsg] };
+      
+      // Try to parse roadmap
+      const items = parseRoadmap(aiResponse);
+      if (items) {
+        // If we already have items, try to preserve completion status if titles match
+        if (session.roadmapItems && session.roadmapItems.length > 0) {
+          const updatedItems = items.map(newItem => {
+            const existing = session.roadmapItems?.find(old => old.title === newItem.title);
+            if (existing) {
+              return { ...newItem, isCompleted: existing.isCompleted, isActive: existing.isActive, messageId: existing.messageId };
+            }
+            return newItem;
+          });
+          updatedSession.roadmapItems = updatedItems;
+        } else {
+          // Link the first item to this message
+          items[0].messageId = aiMsg.id;
+          updatedSession.roadmapItems = items;
+        }
+      }
+
+      onUpdateSession(updatedSession);
+    } catch (error) {
+      console.error('Failed to send message:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleAction = async (action: 'next' | 'explain' | 'exercise' | 'summarize') => {
+    if (isLoading) return;
+    setIsLoading(true);
+
+    try {
+      const aiResponse = await gemini.generateAction(session, action, session.messages);
+      const aiMsg: Message = {
+        id: Date.now().toString(),
+        role: 'model',
+        content: aiResponse,
+        timestamp: Date.now(),
+      };
+      
+      let updatedSession = { ...session, messages: [...session.messages, aiMsg] };
+
+      // Handle roadmap progression on "next"
+      if (action === 'next' && session.roadmapItems) {
+        const activeIndex = session.roadmapItems.findIndex(item => item.isActive);
+        if (activeIndex !== -1) {
+          const newItems = [...session.roadmapItems];
+          newItems[activeIndex] = { ...newItems[activeIndex], isActive: false, isCompleted: true };
+          if (activeIndex + 1 < newItems.length) {
+            newItems[activeIndex + 1] = { 
+              ...newItems[activeIndex + 1], 
+              isActive: true,
+              messageId: aiMsg.id // Link the new lesson message to the roadmap item
+            };
+          }
+          updatedSession.roadmapItems = newItems;
+        }
+      }
+
+      onUpdateSession(updatedSession);
+    } catch (error) {
+      console.error('Action failed:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleZoom = (delta: number) => {
+    setZoom(prev => Math.min(Math.max(prev + delta, 80), 150));
+  };
+
+  const resetZoom = () => setZoom(100);
+
+  return (
+    <div className="flex-1 flex flex-col h-full bg-white min-h-0 relative">
+      <Timeline 
+        items={session.roadmapItems || []} 
+        onItemClick={handleTimelineItemClick}
+      />
+      
+      <div className="h-14 border-b flex items-center justify-between px-6 bg-white/80 backdrop-blur-sm sticky top-0 z-10 shrink-0">
+        <div className="flex items-center gap-3">
+          <h2 className="font-semibold text-zinc-900">{session.topic}</h2>
+          <div className="flex gap-2">
+            <span className="px-2 py-0.5 bg-zinc-100 text-zinc-600 text-[10px] font-bold rounded uppercase tracking-wider">
+              {session.mode}
+            </span>
+            <span className="px-2 py-0.5 bg-zinc-100 text-zinc-600 text-[10px] font-bold rounded uppercase tracking-wider">
+              {session.level}
+            </span>
+            <span className="px-2 py-0.5 bg-zinc-100 text-zinc-600 text-[10px] font-bold rounded uppercase tracking-wider">
+              {session.language}
+            </span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-1 bg-zinc-100 p-1 rounded-lg">
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger>
+                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleZoom(-10)}>
+                  <ZoomOut className="w-4 h-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Zoom Out</TooltipContent>
+            </Tooltip>
+            
+            <div className="px-2 text-[10px] font-bold text-zinc-500 min-w-[3rem] text-center">
+              {zoom}%
+            </div>
+
+            <Tooltip>
+              <TooltipTrigger>
+                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleZoom(10)}>
+                  <ZoomIn className="w-4 h-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Zoom In</TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger>
+                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={resetZoom}>
+                  <Maximize2 className="w-3.5 h-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Reset Zoom</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+      </div>
+
+      <ScrollArea className="flex-1 min-h-0">
+        <div className="flex flex-col" style={{ fontSize: `${zoom}%` }}>
+          {session.messages.map((msg) => (
+            <ChatMessage key={msg.id} message={msg} />
+          ))}
+          {isLoading && (
+            <div className="flex w-full gap-4 px-4 py-8 bg-zinc-50/50">
+              <div className="max-w-3xl mx-auto flex gap-4 w-full">
+                <div className="w-8 h-8 rounded-lg bg-zinc-900 text-white flex items-center justify-center shrink-0 mt-1">
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                </div>
+                <div className="flex-1 space-y-2">
+                  <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Guided Learning AI</p>
+                  <div className="flex gap-1">
+                    <div className="w-1.5 h-1.5 bg-zinc-300 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                    <div className="w-1.5 h-1.5 bg-zinc-300 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                    <div className="w-1.5 h-1.5 bg-zinc-300 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          <div ref={messagesEndRef} />
+        </div>
+      </ScrollArea>
+
+      <div className="p-4 border-t bg-zinc-50/50 shrink-0">
+        <div className="max-w-3xl mx-auto space-y-4">
+          <div className="flex flex-wrap gap-2 justify-center">
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="h-8 text-xs gap-1.5 bg-white"
+                    onClick={() => handleAction('next')}
+                    disabled={isLoading}
+                  >
+                    <BookOpen className="w-3.5 h-3.5" /> Next Lesson
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Move to the next topic in the roadmap</TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="h-8 text-xs gap-1.5 bg-white"
+                    onClick={() => handleAction('explain')}
+                    disabled={isLoading}
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" /> Explain Again
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Get a different explanation of the last concept</TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="h-8 text-xs gap-1.5 bg-white"
+                    onClick={() => handleAction('exercise')}
+                    disabled={isLoading}
+                  >
+                    <HelpCircle className="w-3.5 h-3.5" /> Give Exercise
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Test your knowledge with a task</TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="h-8 text-xs gap-1.5 bg-white"
+                    onClick={() => handleAction('summarize')}
+                    disabled={isLoading}
+                  >
+                    <FileText className="w-3.5 h-3.5" /> Summarize
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Get a summary of current progress</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+
+          <form 
+            onSubmit={(e) => { e.preventDefault(); handleSend(); }}
+            className="relative space-y-2"
+          >
+            {attachments.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-2">
+                {attachments.map((att, i) => (
+                  <div key={i} className="relative group bg-white border rounded-lg p-2 flex items-center gap-2 shadow-sm">
+                    {att.file.type.startsWith('image/') ? (
+                      <img src={att.url} alt="" className="w-8 h-8 object-cover rounded" />
+                    ) : (
+                      <div className="w-8 h-8 bg-zinc-100 rounded flex items-center justify-center">
+                        <File className="w-4 h-4 text-zinc-500" />
+                      </div>
+                    )}
+                    <div className="max-w-[150px]">
+                      <p className="text-[10px] font-medium truncate text-zinc-700">{att.file.name}</p>
+                      <p className="text-[8px] text-zinc-400">{(att.file.size / 1024).toFixed(1)} KB</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeAttachment(i)}
+                      className="absolute -top-1.5 -right-1.5 bg-zinc-900 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <X className="w-2.5 h-2.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            
+            <div className="relative flex items-center">
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileChange}
+                className="hidden"
+                multiple
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="absolute left-1.5 h-9 w-9 text-zinc-500 hover:text-zinc-900"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isLoading}
+              >
+                <Paperclip className="w-4 h-4" />
+              </Button>
+              <Input
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder="Ask your teacher anything..."
+                className="pl-12 pr-12 h-12 bg-white shadow-sm border-zinc-200 focus-visible:ring-zinc-900"
+                disabled={isLoading}
+              />
+              <Button 
+                type="submit" 
+                size="icon" 
+                className="absolute right-1.5 h-9 w-9 bg-zinc-900 hover:bg-zinc-800 text-white"
+                disabled={(!input.trim() && attachments.length === 0) || isLoading}
+              >
+                <Send className="w-4 h-4" />
+              </Button>
+            </div>
+          </form>
+          <p className="text-[10px] text-center text-zinc-400">
+            Guided Learning AI can make mistakes. Verify important information.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
