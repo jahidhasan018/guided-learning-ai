@@ -16,22 +16,22 @@ export function ChatMessage({ message }: ChatMessageProps) {
       id={`message-${message.id}`}
       className={cn(
         "flex w-full gap-4 px-4 py-8",
-        isModel ? "bg-zinc-50/50" : "bg-transparent"
+        isModel ? "bg-accent/20" : "bg-transparent"
       )}
     >
       <div className="max-w-3xl mx-auto flex gap-4 w-full">
         <div className={cn(
           "w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-1",
-          isModel ? "bg-zinc-900 text-white" : "bg-zinc-200 text-zinc-600"
+          isModel ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
         )}>
           {isModel ? <Bot className="w-5 h-5" /> : <User className="w-5 h-5" />}
         </div>
         
         <div className="flex-1 space-y-2 overflow-hidden">
-          <p className="text-[0.75em] font-semibold text-zinc-500 uppercase tracking-wider">
+          <p className="text-[0.75em] font-semibold text-muted-foreground uppercase tracking-wider">
             {isModel ? 'Guided Learning AI' : 'You'}
           </p>
-          <div className="prose prose-zinc max-w-none prose-headings:font-bold prose-headings:tracking-tight prose-p:leading-relaxed prose-pre:bg-zinc-900 prose-pre:text-zinc-100 text-[0.875em]">
+          <div className="prose prose-zinc dark:prose-invert max-w-none prose-headings:font-bold prose-headings:tracking-tight prose-p:leading-relaxed prose-pre:bg-zinc-900 prose-pre:text-zinc-100 text-[0.875em]">
             <ReactMarkdown>
               {message.content.replace(/<\/?roadmap>/g, '')}
             </ReactMarkdown>
@@ -45,20 +45,20 @@ export function ChatMessage({ message }: ChatMessageProps) {
                   href={att.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-2 p-2 bg-white border rounded-lg hover:bg-zinc-50 transition-colors group"
+                  className="flex items-center gap-2 p-2 bg-card border rounded-lg hover:bg-accent transition-colors group"
                 >
                   {att.type.startsWith('image/') ? (
                     <img src={att.url} alt="" className="w-10 h-10 object-cover rounded" />
                   ) : (
-                    <div className="w-10 h-10 bg-zinc-100 rounded flex items-center justify-center">
-                      <FileIcon className="w-5 h-5 text-zinc-500" />
+                    <div className="w-10 h-10 bg-muted rounded flex items-center justify-center">
+                      <FileIcon className="w-5 h-5 text-muted-foreground" />
                     </div>
                   )}
                   <div className="pr-2">
-                    <p className="text-[10px] font-medium text-zinc-900 group-hover:underline truncate max-w-[120px]">
+                    <p className="text-[10px] font-medium text-foreground group-hover:underline truncate max-w-[120px]">
                       {att.name}
                     </p>
-                    <p className="text-[8px] text-zinc-500 uppercase tracking-tighter">
+                    <p className="text-[8px] text-muted-foreground uppercase tracking-tighter">
                       {att.type.split('/')[1] || 'file'}
                     </p>
                   </div>

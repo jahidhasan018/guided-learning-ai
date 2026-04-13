@@ -34,7 +34,26 @@ export interface LearningSession {
   roadmapItems?: RoadmapItem[];
 }
 
+export type AIProvider = 'gemini' | 'openai' | 'claude' | 'groq' | 'mistral';
+
+export interface UserProfile {
+  name: string;
+  email: string;
+  avatar?: string;
+  preferences: {
+    theme: 'light' | 'dark' | 'system';
+    defaultProvider: AIProvider;
+    apiKeys: {
+      openai?: string;
+      claude?: string;
+      groq?: string;
+      mistral?: string;
+    };
+  };
+}
+
 export interface AppState {
   sessions: LearningSession[];
   currentSessionId: string | null;
+  profile: UserProfile;
 }

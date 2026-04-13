@@ -1,6 +1,17 @@
-import { LearningSession } from '../types';
+import { LearningSession, UserProfile } from '../types';
 
 const STORAGE_KEY = 'guided_learning_sessions';
+const PROFILE_KEY = 'guided_learning_profile';
+
+const defaultProfile: UserProfile = {
+  name: 'Student',
+  email: 'student@example.com',
+  preferences: {
+    theme: 'light',
+    defaultProvider: 'gemini',
+    apiKeys: {}
+  }
+};
 
 export const storage = {
   getSessions: (): LearningSession[] => {
@@ -37,5 +48,19 @@ export const storage = {
     const sessions = storage.getSessions();
     const filtered = sessions.filter(s => s.id !== id);
     storage.saveSessions(filtered);
+  },
+
+  getProfile: (): UserProfile => {
+    const data = localStorage.getItem(PROFILE_KEY);
+    if (!data) return defaultProfile;
+    try {
+      return JSON.parse(data);
+    } catch (e) {
+      return defaultProfile;
+    }
+  },
+
+  updateProfile: (profile: UserProfile) => {
+    localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
   }
 };

@@ -1,7 +1,8 @@
 import { GoogleGenAI } from "@google/genai";
-import { LearningSession, Message } from "../types";
-
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+import OpenAI from "openai";
+import Anthropic from "@anthropic-ai/sdk";
+import { Mistral } from "@mistralai/mistralai";
+import { LearningSession, Message, UserProfile } from "../types";
 
 const getSystemPrompt = (session: LearningSession) => {
   const isProjectMode = session.mode === 'Project';
@@ -67,15 +68,101 @@ CRITICAL: Wrap the roadmap items in a <roadmap> tag like this:
 };
 
 export const gemini = {
-  async sendMessage(session: LearningSession, userMessage: string, history: Message[]) {
+  async sendMessage(session: LearningSession, userMessage: string, history: Message[], profile?: UserProfile) {
+    const provider = profile?.preferences.defaultProvider || 'gemini';
+    const systemPrompt = getSystemPrompt(session);
+
+    if (provider === 'openai' && profile?.preferences.apiKeys.openai) {
+      const openai = new OpenAI({
+        apiKey: profile.preferences.apiKeys.openai,
+        dangerouslyAllowBrowser: true
+      });
+
+      const response = await openai.chat.completions.create({
+        model: "gpt-4-turbo-preview",
+        messages: [
+          { role: "system", content: systemPrompt },
+          ...history.map(msg => ({
+            role: msg.role === 'model' ? 'assistant' as const : 'user' as const,
+            content: msg.content
+          })),
+          { role: "user", content: userMessage }
+        ],
+      });
+
+      return response.choices[0].message.content || "No response from OpenAI";
+    }
+
+    if (provider === 'claude' && profile?.preferences.apiKeys.claude) {
+      const anthropic = new Anthropic({
+        apiKey: profile.preferences.apiKeys.claude,
+        dangerouslyAllowBrowser: true
+      });
+
+      const response = await anthropic.messages.create({
+        model: "claude-3-opus-20240229",
+        max_tokens: 4096,
+        system: systemPrompt,
+        messages: [
+          ...history.map(msg => ({
+            role: msg.role === 'model' ? 'assistant' as const : 'user' as const,
+            content: msg.content
+          })),
+          { role: "user", content: userMessage }
+        ],
+      });
+
+      return (response.content[0] as any).text || "No response from Claude";
+    }
+
+    if (provider === 'groq' && profile?.preferences.apiKeys.groq) {
+      const groq = new OpenAI({
+        apiKey: profile.preferences.apiKeys.groq,
+        baseURL: "https://api.groq.com/openai/v1",
+        dangerouslyAllowBrowser: true
+      });
+
+      const response = await groq.chat.completions.create({
+        model: "llama-3.3-70b-versatile",
+        messages: [
+          { role: "system", content: systemPrompt },
+          ...history.map(msg => ({
+            role: msg.role === 'model' ? 'assistant' as const : 'user' as const,
+            content: msg.content
+          })),
+          { role: "user", content: userMessage }
+        ],
+      });
+
+      return response.choices[0].message.content || "No response from Groq";
+    }
+
+    if (provider === 'mistral' && profile?.preferences.apiKeys.mistral) {
+      const mistral = new Mistral({ apiKey: profile.preferences.apiKeys.mistral });
+
+      const response = await mistral.chat.complete({
+        model: "mistral-large-latest",
+        messages: [
+          { role: "system", content: systemPrompt },
+          ...history.map(msg => ({
+            role: msg.role === 'model' ? 'assistant' as const : 'user' as const,
+            content: msg.content
+          })),
+          { role: "user", content: userMessage }
+        ],
+      });
+
+      return (response.choices?.[0].message.content as string) || "No response from Mistral";
+    }
+
+    // Default to Gemini
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
     const model = "gemini-3-flash-preview";
     
     const formattedHistory = history.map(msg => ({
       role: msg.role,
       parts: [{ text: msg.content }]
     }));
-
-    const systemPrompt = getSystemPrompt(session);
 
     const response = await ai.models.generateContent({
       model,
@@ -92,7 +179,7 @@ export const gemini = {
     return response.text || "I'm sorry, I couldn't generate a response.";
   },
 
-  async generateAction(session: LearningSession, action: 'next' | 'explain' | 'exercise' | 'summarize', history: Message[]) {
+  async generateAction(session: LearningSession, action: 'next' | 'explain' | 'exercise' | 'summarize', history: Message[], profile?: UserProfile) {
     const actionPrompts = {
       next: "Please proceed to the next lesson or sub-topic in our roadmap.",
       explain: "I didn't quite get that. Could you explain the last concept again using a different analogy or example?",
@@ -100,6 +187,8 @@ export const gemini = {
       summarize: "Can you summarize what we've learned in this lesson so far?"
     };
 
-    return this.sendMessage(session, actionPrompts[action], history);
+    return this.sendMessage(session, actionPrompts[action], history, profile);
   }
 };
+
+

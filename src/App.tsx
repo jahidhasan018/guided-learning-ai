@@ -2,16 +2,21 @@ import React, { useState, useEffect } from 'react';
 import { Sidebar } from '@/components/Sidebar';
 import { TopicSetup } from '@/components/TopicSetup';
 import { ChatInterface } from '@/components/ChatInterface';
-import { LearningSession, LearningLevel, LearningMode, Message } from '@/types';
+import { LearningSession, LearningLevel, LearningMode, Message, UserProfile } from '@/types';
 import { storage } from '@/lib/storage';
 import { gemini } from '@/lib/gemini';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { parseRoadmap } from '@/lib/utils';
+import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import { Button } from '@/components/ui/button';
+import { Menu } from 'lucide-react';
 
 export default function App() {
   const [sessions, setSessions] = useState<LearningSession[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [profile, setProfile] = useState<UserProfile>(storage.getProfile());
   const [isInitializing, setIsInitializing] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     const savedSessions = storage.getSessions();
@@ -20,6 +25,25 @@ export default function App() {
       setCurrentSessionId(savedSessions[0].id);
     }
   }, []);
+
+  useEffect(() => {
+    const root = window.document.documentElement;
+    const theme = profile.preferences.theme;
+    
+    if (theme === 'system') {
+      const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      root.classList.remove('light', 'dark');
+      root.classList.add(systemTheme);
+    } else {
+      root.classList.remove('light', 'dark');
+      root.classList.add(theme);
+    }
+  }, [profile.preferences.theme]);
+
+  const handleUpdateProfile = (newProfile: UserProfile) => {
+    storage.updateProfile(newProfile);
+    setProfile(newProfile);
+  };
 
   const handleStartSession = async (topic: string, level: LearningLevel, mode: LearningMode, language: string) => {
     setIsInitializing(true);
@@ -36,7 +60,7 @@ export default function App() {
 
     try {
       // Initial greeting and roadmap
-      const initialResponse = await gemini.sendMessage(newSession, `Hello! I want to learn about ${topic}. Please provide a roadmap and start the first lesson.`, []);
+      const initialResponse = await gemini.sendMessage(newSession, `Hello! I want to learn about ${topic}. Please provide a roadmap and start the first lesson.`, [], profile);
       
       const welcomeMsg: Message = {
         id: (Date.now() + 1).toString(),
@@ -83,21 +107,48 @@ export default function App() {
 
   const currentSession = sessions.find(s => s.id === currentSessionId);
 
+  const sidebarProps = {
+    sessions,
+    currentSessionId,
+    profile,
+    onSelectSession: (id: string) => {
+      setCurrentSessionId(id);
+      setIsMobileMenuOpen(false);
+    },
+    onNewSession: () => {
+      setCurrentSessionId(null);
+      setIsMobileMenuOpen(false);
+    },
+    onDeleteSession: handleDeleteSession,
+    onUpdateProfile: handleUpdateProfile,
+  };
+
   return (
     <TooltipProvider>
-      <div className="flex h-screen bg-white text-zinc-900 font-sans overflow-hidden">
-        <Sidebar
-          sessions={sessions}
-          currentSessionId={currentSessionId}
-          onSelectSession={setCurrentSessionId}
-          onNewSession={() => setCurrentSessionId(null)}
-          onDeleteSession={handleDeleteSession}
-        />
+      <div className="flex h-[100dvh] bg-white text-zinc-900 font-sans overflow-hidden">
+        {/* Desktop Sidebar */}
+        <div className="hidden md:block h-full">
+          <Sidebar {...sidebarProps} />
+        </div>
         
         <main className="flex-1 flex flex-col h-full relative overflow-hidden">
+          {/* Mobile Header */}
+          <div className="md:hidden flex items-center p-4 border-b bg-background shrink-0">
+            <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
+              <SheetTrigger render={<Button variant="ghost" size="icon" className="mr-2" />}>
+                <Menu className="w-5 h-5" />
+              </SheetTrigger>
+              <SheetContent side="left" className="p-0 w-72">
+                <Sidebar {...sidebarProps} />
+              </SheetContent>
+            </Sheet>
+            <h1 className="font-semibold text-foreground">Guided Learning</h1>
+          </div>
+
           {currentSessionId && currentSession ? (
             <ChatInterface 
               session={currentSession} 
+              profile={profile}
               onUpdateSession={handleUpdateSession} 
             />
           ) : (
