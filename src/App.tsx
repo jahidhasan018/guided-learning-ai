@@ -6,10 +6,10 @@ import { LearningSession, LearningLevel, LearningMode, Message, UserProfile } fr
 import { storage } from '@/lib/storage';
 import { gemini } from '@/lib/gemini';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { parseRoadmap } from '@/lib/utils';
+import { parseRoadmap, cn } from '@/lib/utils';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
-import { Menu } from 'lucide-react';
+import { Menu, ChevronLeft, ChevronRight } from 'lucide-react';
 
 export default function App() {
   const [sessions, setSessions] = useState<LearningSession[]>([]);
@@ -17,6 +17,7 @@ export default function App() {
   const [profile, setProfile] = useState<UserProfile>(storage.getProfile());
   const [isInitializing, setIsInitializing] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   useEffect(() => {
     const savedSessions = storage.getSessions();
@@ -125,13 +126,36 @@ export default function App() {
 
   return (
     <TooltipProvider>
-      <div className="flex h-[100dvh] bg-white text-zinc-900 font-sans overflow-hidden">
+      <div className="flex h-[100dvh] bg-background text-foreground font-sans overflow-hidden">
         {/* Desktop Sidebar */}
-        <div className="hidden md:block h-full">
-          <Sidebar {...sidebarProps} />
+        <div
+          className={cn(
+            "hidden md:block h-full transition-all duration-300 ease-in-out shrink-0 overflow-hidden",
+            isSidebarCollapsed ? "w-0" : "w-72"
+          )}
+        >
+          <div className={cn(
+            "w-72 h-full transition-transform duration-300 ease-in-out",
+            isSidebarCollapsed ? "-translate-x-full" : "translate-x-0"
+          )}>
+            <Sidebar {...sidebarProps} />
+          </div>
         </div>
         
         <main className="flex-1 flex flex-col h-full relative overflow-hidden">
+          {/* Desktop Sidebar Toggle Button */}
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+            className={cn(
+              "hidden md:flex absolute top-4 z-30 rounded-full w-8 h-8 shadow-sm transition-all duration-300 ease-in-out bg-background text-muted-foreground hover:text-foreground",
+              isSidebarCollapsed ? "left-4" : "-left-4"
+            )}
+          >
+            {isSidebarCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+          </Button>
+
           {/* Mobile Header */}
           <div className="md:hidden flex items-center p-4 border-b bg-background shrink-0">
             <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>

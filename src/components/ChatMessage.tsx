@@ -19,7 +19,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
         isModel ? "bg-accent/20" : "bg-transparent"
       )}
     >
-      <div className="max-w-3xl mx-auto flex gap-4 w-full">
+      <div className="max-w-5xl mx-auto flex gap-4 w-full">
         <div className={cn(
           "w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-1",
           isModel ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"

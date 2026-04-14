@@ -296,7 +296,7 @@ export function ChatInterface({ session, profile, onUpdateSession }: ChatInterfa
           ))}
           {isLoading && (
             <div className="flex w-full gap-4 px-4 py-8 bg-accent/20">
-              <div className="max-w-3xl mx-auto flex gap-4 w-full">
+              <div className="max-w-5xl mx-auto flex gap-4 w-full">
                 <div className="w-8 h-8 rounded-lg bg-primary text-primary-foreground flex items-center justify-center shrink-0 mt-1">
                   <Loader2 className="w-5 h-5 animate-spin" />
                 </div>
@@ -316,7 +316,7 @@ export function ChatInterface({ session, profile, onUpdateSession }: ChatInterfa
       </ScrollArea>
 
       <div className="p-2 sm:p-4 border-t bg-background/80 backdrop-blur-sm shrink-0">
-        <div className="max-w-3xl mx-auto space-y-2 sm:space-y-4">
+        <div className="max-w-5xl mx-auto space-y-2 sm:space-y-4">
           <div className="flex flex-wrap gap-1.5 sm:gap-2 justify-center">
             <TooltipProvider>
               <Tooltip>
