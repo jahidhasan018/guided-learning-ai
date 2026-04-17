@@ -16,10 +16,13 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18' # Matches the Node version in package.json build target
+          node-version: '20' # Use Node 20 (LTS) to avoid old npm bugs
 
       - name: Install Dependencies
-        run: npm install
+        run: |
+          rm -f package-lock.json
+          rm -rf node_modules
+          npm install
 
       - name: Build Application
         run: npm run build
