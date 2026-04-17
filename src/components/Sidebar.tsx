@@ -2,10 +2,12 @@ import React from 'react';
 import { LearningSession, UserProfile } from '@/types';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { PlusCircle, MessageSquare, Trash2, GraduationCap, Rocket, BookOpen } from 'lucide-react';
+import { PlusCircle, MessageSquare, Trash2, GraduationCap, Rocket, BookOpen, LogOut, ShieldAlert } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { ProfileSettings } from './ProfileSettings';
+import { useAuth } from '@/contexts/AuthContext';
+import { Link } from 'react-router-dom';
 
 interface SidebarProps {
   sessions: LearningSession[];
@@ -26,6 +28,7 @@ export function Sidebar({
   onDeleteSession,
   onUpdateProfile
 }: SidebarProps) {
+  const { logout, user } = useAuth();
   const initials = profile.name
     .split(' ')
     .map(n => n[0])
@@ -69,19 +72,28 @@ export function Sidebar({
   return (
     <div className="w-72 border-r bg-sidebar flex flex-col h-full">
       <div className="p-4 border-b">
-        <div className="flex items-center gap-2 mb-6 px-2">
-          <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-            <GraduationCap className="w-5 h-5 text-primary-foreground" />
-          </div>
-          <div className="flex flex-col">
-            <h1 className="font-semibold text-foreground tracking-tight leading-none">Guided Learning</h1>
-            <div className="flex items-center gap-1 mt-1">
-              <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/60">AI:</span>
-              <span className="text-[9px] font-bold uppercase tracking-widest text-primary px-1.5 py-0.5 bg-primary/10 rounded-full">
-                {profile.preferences.defaultProvider}
-              </span>
+        <div className="flex items-center justify-between mb-6 px-2">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+              <GraduationCap className="w-5 h-5 text-primary-foreground" />
+            </div>
+            <div className="flex flex-col">
+              <h1 className="font-semibold text-foreground tracking-tight leading-none">Guided Learning</h1>
+              <div className="flex items-center gap-1 mt-1">
+                <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/60">AI:</span>
+                <span className="text-[9px] font-bold uppercase tracking-widest text-primary px-1.5 py-0.5 bg-primary/10 rounded-full">
+                  {profile.preferences.defaultProvider}
+                </span>
+              </div>
             </div>
           </div>
+          {user?.role === 'superadmin' && (
+            <Link to="/admin">
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-primary">
+                <ShieldAlert className="w-4 h-4" />
+              </Button>
+            </Link>
+          )}
         </div>
         
         <Button 
@@ -128,7 +140,7 @@ export function Sidebar({
       
       <div className="p-4 border-t bg-sidebar">
         <div className="flex items-center gap-3 px-2">
-          <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-[10px] font-bold text-primary-foreground">
+          <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-[10px] font-bold text-primary-foreground shrink-0">
             {initials}
           </div>
           <div className="flex-1 min-w-0">
@@ -138,6 +150,9 @@ export function Sidebar({
             </p>
           </div>
           <ProfileSettings profile={profile} onUpdate={onUpdateProfile} />
+          <Button variant="ghost" size="icon" onClick={() => logout()} className="h-9 w-9 text-muted-foreground hover:text-destructive shrink-0">
+            <LogOut className="w-5 h-5" />
+          </Button>
         </div>
       </div>
     </div>
