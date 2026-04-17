@@ -1,0 +1,62 @@
+name: Build and Deploy to Hostinger
+
+on:
+  push:
+    branches:
+      - main # Triggers the workflow on push to the main branch
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18' # Matches the Node version in package.json build target
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Build Application
+        run: npm run build
+
+      - name: Deploy files via SCP
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.HOSTINGER_HOST }}
+          username: ${{ secrets.HOSTINGER_USERNAME }}
+          key: ${{ secrets.HOSTINGER_SSH_KEY }}
+          port: ${{ secrets.HOSTINGER_PORT }} # Often 65002 for Hostinger Shared, 22 for VPS
+          # We deploy dist folder, package.json, package-lock.json and drizzle config
+          source: "dist,package.json,package-lock.json,drizzle.config.ts"
+          target: ${{ secrets.HOSTINGER_TARGET_DIR }}
+          overwrite: true
+
+      - name: Install Prod Dependencies & Restart App via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.HOSTINGER_HOST }}
+          username: ${{ secrets.HOSTINGER_USERNAME }}
+          key: ${{ secrets.HOSTINGER_SSH_KEY }}
+          port: ${{ secrets.HOSTINGER_PORT }}
+          script: |
+            cd ${{ secrets.HOSTINGER_TARGET_DIR }}
+            
+            # Install production dependencies only
+            npm install --production
+            
+            # Apply any pending database schema changes to Neon DB automatically
+            npx drizzle-kit push
+            
+            # --- RESTART PROCESS ---
+            # NOTE: Adjust the restart command based on your Hostinger plan!
+            
+            # OPTION 1: If you are using PM2 (Common for Hostinger VPS / Node.js)
+            pm2 restart app || pm2 start dist/server.js --name "app"
+            
+            # OPTION 2: If you are using Phusion Passenger (Common for Hostinger Shared Node.js)
+            # mkdir -p tmp && touch tmp/restart.txt
